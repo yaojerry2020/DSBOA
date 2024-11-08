@@ -1,0 +1,122 @@
+// routes/application.js
+
+const express = require('express');
+const router = express.Router();
+const auth = require('../middleware/auth');
+const { Application, Assignment, Driver, Vehicle } = require('../models');
+const { body, param, validationResult } = require('express-validator');
+
+// -------------------- 创建用车申请 --------------------
+router.post('/',
+  auth,
+  [
+    body('purpose').notEmpty().withMessage('用途不能为空。'),
+    body('destination').notEmpty().withMessage('目的地不能为空。'),
+    body('startTime').isISO8601().withMessage('开始时间格式不正确。'),
+    body('endTime').isISO8601().withMessage('结束时间格式不正确。'),
+    body('remarks').optional().isString(),
+  ],
+  async (req, res) => {
+    // 验证请求体
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { purpose, destination, startTime, endTime, remarks } = req.body;
+
+    // 确保结束时间晚于开始时间
+    if (new Date(endTime) <= new Date(startTime)) {
+      return res.status(400).json({ message: '结束时间必须晚于开始时间。' });
+    }
+
+    try {
+      const newApplication = await Application.create({
+        purpose,
+        destination,
+        startTime,
+        endTime,
+        remarks,
+        userId: req.user.userId,
+      });
+
+      res.status(201).json(newApplication);
+    } catch (error) {
+      console.error('创建用车申请错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+// -------------------- 获取用车申请列表 --------------------
+router.get('/',
+  auth,
+  async (req, res) => {
+    try {
+      let applications;
+      if (req.user.role === 'admin') {
+        applications = await Application.findAll({
+          include: [
+            { model: Assignment, as: 'assignments', include: ['driver', 'vehicle'] },
+          ],
+        });
+      } else {
+        applications = await Application.findAll({
+          where: { userId: req.user.userId },
+          include: [
+            { model: Assignment, as: 'assignments', include: ['driver', 'vehicle'] },
+          ],
+        });
+      }
+      res.json(applications);
+    } catch (error) {
+      console.error('获取用车申请列表错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+// -------------------- 删除用车申请 --------------------
+router.delete('/:id',
+  auth,
+  [
+    param('id').isInt().withMessage('申请ID必须是整数。')
+  ],
+  async (req, res) => {
+    const { id } = req.params;
+
+    // 验证请求参数
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const application = await Application.findByPk(id);
+
+      if (!application) {
+        return res.status(404).json({ message: '用车申请未找到。' });
+      }
+
+      // 权限检查：
+      // 普通用户只能删除自己的申请
+      // 管理员可以删除任何申请
+      if (req.user.role !== 'admin' && application.userId !== req.user.userId) {
+        return res.status(403).json({ message: '您没有权限删除此用车申请。' });
+      }
+
+      // 只能删除状态为 'pending' 的申请
+      if (application.status !== 'pending') {
+        return res.status(400).json({ message: '只能删除状态为 pending 的用车申请。' });
+      }
+
+      await application.destroy();
+      res.json({ message: '用车申请删除成功。' });
+    } catch (error) {
+      console.error('删除用车申请错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+module.exports = router;

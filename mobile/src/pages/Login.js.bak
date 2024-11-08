@@ -1,0 +1,59 @@
+// src/pages/Login.js
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import './Login.css';
+import { Box, TextField, Button, Typography, Snackbar, Alert } from '@mui/material';
+
+const Login = () => {
+  const { login } = useAuth();
+  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [rememberMe, setRememberMe] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  useEffect(() => {
+    const savedUsername = localStorage.getItem('username');
+    if (savedUsername) {
+      setCredentials(prev => ({ ...prev, username: savedUsername }));
+      setRememberMe(true);
+    }
+  }, []);
+
+  const handleChange = (e) => setCredentials({ ...credentials, [e.target.name]: e.target.value });
+  const handleCheckboxChange = () => setRememberMe(prev => !prev);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await login(credentials.username, credentials.password);
+      if (rememberMe) localStorage.setItem('username', credentials.username);
+      else localStorage.removeItem('username');
+    } catch (error) {
+      setSnackbar({ open: true, message: `登录失败: ${error.message}`, severity: 'error' });
+    }
+  };
+
+  return (
+    <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 8 }}>
+      <Typography variant="h4" gutterBottom>登录</Typography>
+      <TextField label="用户名" name="username" value={credentials.username} onChange={handleChange} required sx={{ mb: 2, width: '300px' }} />
+      <TextField label="密码" name="password" type="password" value={credentials.password} onChange={handleChange} required sx={{ mb: 2, width: '300px' }} />
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <input type="checkbox" checked={rememberMe} onChange={handleCheckboxChange} id="rememberMe" />
+        <label htmlFor="rememberMe" style={{ marginLeft: '8px' }}>保存密码</label>
+      </Box>
+      <Button type="submit" variant="contained" color="primary">登录</Button>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+
+export default Login;

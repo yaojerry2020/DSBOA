@@ -1,0 +1,52 @@
+// src/App.js
+import React, { lazy } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './contexts/AuthContext';
+import PrivateRoute from './components/PrivateRoute';
+
+// 使用 lazy 加载模块，确保按需加载
+const Login = lazy(() => import('./pages/Login'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const UserHome = lazy(() => import('./components/UserHome'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const DepartmentManagement = lazy(() => import('./components/DepartmentManagement'));
+const EditDepartment = lazy(() => import('./components/EditDepartment'));
+const CreateDepartment = lazy(() => import('./components/CreateDepartment'));
+const RoleManagement = lazy(() => import('./components/RoleManagement'));
+const CreateUser = lazy(() => import('./components/CreateUser'));
+const EditUser = lazy(() => import('./components/EditUser'));
+
+function App() {
+  const { user } = useAuth();  // 获取用户信息，判断用户角色
+
+  return (
+    <Routes>
+      {/* 默认的登录路由 */}
+      <Route path="/login" element={<Login />} />
+      
+      {/* 根路径自动重定向到合适的主页 */}
+      <Route path="/" element={<Navigate to={user ? (user.roles.includes('admin') ? '/admin' : '/user/home') : '/login'} />} />
+
+      {/* AdminDashboard 路由，只有管理员角色可以访问 */}
+      <Route element={<PrivateRoute roles={['admin']} />}>
+        <Route path="/admin" element={<AdminDashboard />}>
+          <Route path="users" element={<UserManagement />} />
+          <Route path="users/create" element={<CreateUser />} />
+          <Route path="users/edit/:id" element={<EditUser />} />
+          <Route path="departments" element={<DepartmentManagement />} />
+          <Route path="departments/create" element={<CreateDepartment />} />
+          <Route path="departments/edit/:id" element={<EditDepartment />} />
+          <Route path="roles" element={<RoleManagement />} />
+        </Route>
+      </Route>
+
+      {/* 普通用户的主页，仅用户角色访问 */}
+      <Route path="/user/home" element={<PrivateRoute roles={['user']}><UserHome /></PrivateRoute>} />
+
+      {/* 默认跳转到登录页 */}
+      <Route path="*" element={<Navigate to="/login" />} />
+    </Routes>
+  );
+}
+
+export default App;

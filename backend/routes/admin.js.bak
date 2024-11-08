@@ -1,0 +1,712 @@
+// routes/admin.js
+
+const express = require('express');
+const router = express.Router();
+const { body, param, validationResult } = require('express-validator');
+const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
+const { Department, User, Role } = require('../models');
+const authenticate = require('../middleware/authenticate');
+const roleCheck = require('../middleware/role');
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
+const { Transform } = require('stream');
+const pinyin = require('pinyin');
+const { v4: uuidv4 } = require('uuid'); // 用于生成随机字符串
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });// 设置文件上传存储
+//console.log('Department model:', Department);
+//console.log('User model:', User);
+//console.log('Role model:', Role);
+//console.log('pinyin module:', pinyin);
+
+
+// 自定义转换流，用于移除 BOM
+const createRemoveBOMStream = () => {
+  let isFirstChunk = true;
+  return new Transform({
+    transform(chunk, encoding, callback) {
+      let data = chunk.toString();
+      if (isFirstChunk) {
+        data = data.replace(/^\uFEFF/, '');
+        isFirstChunk = false;
+      }
+      callback(null, data);
+    }
+  });
+};
+
+
+
+
+
+// -------------------- 用户管理 --------------------
+// 获取所有用户（仅管理员可访问）
+router.get('/users', authenticate, roleCheck(['admin']), async (req, res) => {
+  try {
+    const users = await User.findAll({
+      include: [
+        { model: Role, as: 'roles', attributes: ['id', 'name'] },
+        { model: Department, as: 'departments', attributes: ['id', 'name'] },
+      ],
+    });
+    res.json(users);
+  } catch (error) {
+    console.error('获取用户列表错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 获取单个用户（仅管理员可访问）
+router.get('/users/:id', authenticate, roleCheck(['admin']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await User.findByPk(id, {
+      include: [
+        { model: Role, as: 'roles', attributes: ['id', 'name'] },
+        { model: Department, as: 'departments', attributes: ['id', 'name'] },
+      ],
+    });
+    if (!user) {
+      return res.status(404).json({ message: '用户未找到。' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('获取单个用户错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 创建新用户（仅管理员可访问）
+router.post('/users', authenticate, roleCheck(['admin']), [
+  body('username').notEmpty().withMessage('用户名不能为空。'),
+  body('displayName').notEmpty().withMessage('显示名不能为空。'),
+  body('email').isEmail().withMessage('无效的邮箱地址。'),
+  body('password').isLength({ min: 6 }).withMessage('密码长度至少为6个字符。'),
+  body('roles').optional().isArray().withMessage('roles 必须是数组。'),
+  body('roles.*').isInt().withMessage('每个 roleId 必须是整数。'),
+  body('departments').optional().isArray().withMessage('departments 必须是数组。'),
+  body('departments.*').isInt().withMessage('每个 departmentId 必须是整数。'),
+  body('phone').notEmpty().withMessage('联系电话不能为空。'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { username, displayName, email, password, roles, departments, phone } = req.body;
+
+  try {
+    const existingUser = await User.findOne({
+      where: { [Op.or]: [{ username }, { email }] },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ message: '用户名或邮箱已存在。' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10); // 哈希密码
+    const newUser = await User.create({ 
+      username, 
+      displayName, 
+      email, 
+      password: hashedPassword, 
+      phone 
+    });
+
+    // 关联角色
+    if (roles && roles.length > 0) {
+      const foundRoles = await Role.findAll({ where: { id: roles } });
+      if (foundRoles.length !== roles.length) {
+        return res.status(400).json({ message: '某些角色不存在。' });
+      }
+      await newUser.addRoles(foundRoles);
+    }
+
+    // 关联部门
+    if (departments && departments.length > 0) {
+      const foundDepartments = await Department.findAll({ where: { id: departments } });
+      if (foundDepartments.length !== departments.length) {
+        return res.status(400).json({ message: '某些部门不存在。' });
+      }
+      await newUser.addDepartments(foundDepartments);
+    }
+
+    const userResponse = await User.findByPk(newUser.id, {
+      include: [
+        { model: Role, as: 'roles', attributes: ['id', 'name'] },
+        { model: Department, as: 'departments', attributes: ['id', 'name'] },
+      ],
+    });
+
+    res.status(201).json({ message: '用户创建成功。', user: userResponse });
+  } catch (error) {
+    console.error('创建用户错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 更新用户信息（包括密码）
+router.put('/users/:id', authenticate, roleCheck(['admin']), [
+  param('id').isInt().withMessage('用户ID必须是整数。'),
+  body('username').optional().notEmpty().withMessage('用户名不能为空。'),
+  body('displayName').optional().notEmpty().withMessage('显示名不能为空。'),
+  body('email').optional().isEmail().withMessage('无效的邮箱地址。'),
+  body('roles').optional().isArray().withMessage('roles 必须是数组。'),
+  body('roles.*').isInt().withMessage('每个 roleId 必须是整数。'),
+  body('departments').optional().isArray().withMessage('departments 必须是数组。'),
+  body('departments.*').isInt().withMessage('每个 departmentId 必须是整数。'),
+  body('phone').optional().notEmpty().withMessage('联系电话不能为空。'),
+  body('password').optional().isLength({ min: 6 }).withMessage('密码长度至少为6个字符。'),
+], async (req, res) => {
+  const { id } = req.params;
+  const { username, displayName, email, roles, departments, phone, password } = req.body;
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: '用户未找到。' });
+    }
+
+    if (username) {
+      user.username = username;
+    }
+    if (displayName) {
+      user.displayName = displayName;
+    }
+    if (email) {
+      user.email = email;
+    }
+    if (phone) {
+      user.phone = phone;
+    }
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      user.password = hashedPassword;
+    }
+
+    await user.save();
+
+    // 更新角色
+    if (roles) {
+      if (roles.length > 0) {
+        const foundRoles = await Role.findAll({ where: { id: roles } });
+        if (foundRoles.length !== roles.length) {
+          return res.status(400).json({ message: '某些角色不存在。' });
+        }
+        await user.setRoles(foundRoles);
+      } else {
+        await user.setRoles([]);
+      }
+    }
+
+    // 更新部门
+    if (departments) {
+      if (departments.length > 0) {
+        const foundDepartments = await Department.findAll({ where: { id: departments } });
+        if (foundDepartments.length !== departments.length) {
+          return res.status(400).json({ message: '某些部门不存在。' });
+        }
+        await user.setDepartments(foundDepartments);
+      } else {
+        await user.setDepartments([]);
+      }
+    }
+
+    const userResponse = await User.findByPk(id, {
+      include: [
+        { model: Role, as: 'roles', attributes: ['id', 'name'] },
+        { model: Department, as: 'departments', attributes: ['id', 'name'] },
+      ],
+    });
+
+    res.json({ message: '用户更新成功。', user: userResponse });
+  } catch (error) {
+    console.error('更新用户错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 删除用户
+router.delete('/users/:id', authenticate, roleCheck(['admin']), [
+  param('id').isInt().withMessage('用户ID必须是整数。'),
+], async (req, res) => {
+  const { id } = req.params;
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: '用户未找到。' });
+    }
+
+    await user.destroy();
+    res.json({ message: '用户删除成功。' });
+  } catch (error) {
+    console.error('删除用户错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 批量上传用户
+router.post('/users/bulk-upload', authenticate, roleCheck(['admin']), upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    console.log('未收到文件上传请求。');
+    return res.status(400).json({ message: '未上传文件。' });
+  }
+
+  const results = [];
+  const errors = [];
+
+  const filePath = path.resolve(req.file.path);
+  console.log(`上传的文件路径: ${filePath}`);
+
+  fs.createReadStream(filePath)
+    .pipe(createRemoveBOMStream()) // 移除 BOM
+    .pipe(csv())
+    .on('data', (data) => {
+      console.log('解析的行数据:', data);
+      results.push(data);
+    })
+    .on('end', async () => {
+      console.log('CSV 文件解析完成。');
+      // 删除临时文件
+      fs.unlinkSync(filePath);
+      console.log('临时文件已删除。');
+
+      for (let i = 0; i < results.length; i++) {
+        const row = results[i];
+        const { ChineseName, DepartmentName: departmentName, Phone, Roles } = row; // 假设 CSV 包含 Roles 字段
+
+        console.log(`第${i + 1}行的 departmentName: ${departmentName}`);
+
+        // 基本验证
+        if (!ChineseName || !departmentName || !Phone) {
+          errors.push(`第${i + 1}行数据不完整。`);
+          console.log(`第${i + 1}行数据不完整。`);
+          continue;
+        }
+
+        // 清理 ChineseName 中的空格
+        const cleanChineseName = ChineseName.trim().replace(/\s+/g, '');
+        console.log(`第${i + 1}行的原始 ChineseName: "${ChineseName}", 清理后的 ChineseName: "${cleanChineseName}"`);
+        
+        // 生成用户名（拼音）
+        let username;
+        try {
+          const namePinyinArray = pinyin(cleanChineseName, { style: pinyin.STYLE_NORMAL });
+          username = namePinyinArray.flat().join('').toLowerCase();
+          console.log(`生成的用户名: ${username}`);
+        } catch (pinyinError) {
+          console.error(`第${i + 1}行拼音转换失败:`, pinyinError);
+          errors.push(`第${i + 1}行拼音转换失败。`);
+          continue;
+        }
+
+        // 检查用户名是否已存在
+        let existingUser = await User.findOne({ where: { username } });
+        if (existingUser) {
+          console.log(`用户名 "${username}" 已存在，尝试生成唯一用户名。`);
+          // 如果用户名已存在，添加随机字符串以确保唯一性
+          const randomString = uuidv4().split('-')[0];
+          username = `${username}${randomString}`;
+          existingUser = await User.findOne({ where: { username } });
+          if (existingUser) {
+            errors.push(`第${i + 1}行生成的用户名 "${username}" 仍然存在。`);
+            console.log(`第${i + 1}行生成的用户名 "${username}" 仍然存在。`);
+            continue;
+          }
+          console.log(`生成的唯一用户名: ${username}`);
+        }
+
+        // 生成随机邮箱
+        const randomStringEmail = uuidv4().split('-')[0];
+        const email = `${username}${randomStringEmail}@example.com`;
+        console.log(`生成的邮箱: ${email}`);
+
+        // 设置初始密码并哈希
+        const initialPassword = '12345678';
+        let hashedPassword;
+        try {
+          hashedPassword = await bcrypt.hash(initialPassword, 10);
+        } catch (hashError) {
+          errors.push(`第${i + 1}行密码哈希失败。`);
+          console.log(`第${i + 1}行密码哈希失败:`, hashError);
+          continue;
+        }
+
+        // 查找部门
+        const department = await Department.findOne({ where: { name: departmentName } });
+        console.log(`查找到的部门: ${department ? department.name : '未找到'}`);
+
+        if (!department) {
+          errors.push(`第${i + 1}行部门 "${departmentName}" 不存在。`);
+          console.log(`第${i + 1}行部门 "${departmentName}" 不存在。`);
+          continue;
+        }
+
+        // 查找角色
+        let rolesToAssign = [2]; // 默认角色ID，假设2为普通用户。根据实际情况调整。
+        if (Roles) {
+          const roleNames = Roles.split(';').map(r => r.trim());
+          const foundRoles = await Role.findAll({ where: { name: roleNames } });
+          if (foundRoles.length !== roleNames.length) {
+            errors.push(`第${i + 1}行部分角色不存在。`);
+            console.log(`第${i + 1}行部分角色不存在。`);
+            continue;
+          }
+          rolesToAssign = foundRoles.map(r => r.id);
+        }
+
+        // 创建用户
+        try {
+          const newUser = await User.create({
+            username,
+            displayName: ChineseName,
+            phone: Phone,
+            email,
+            password: hashedPassword,
+          });
+          // 关联部门
+          await newUser.addDepartment(department);
+          // 关联角色
+          await newUser.addRoles(rolesToAssign);
+          console.log(`第${i + 1}行用户 "${username}" 创建成功。`);
+        } catch (err) {
+          console.error(`第${i + 1}行创建用户失败:`, err);
+          errors.push(`第${i + 1}行创建用户失败。`);
+        }
+      }
+
+      if (errors.length > 0) {
+        console.log('部分导入失败。', errors);
+        return res.status(400).json({ message: '部分导入失败。', errors });
+      }
+
+      console.log('所有用户已成功导入。');
+      return res.status(200).json({ message: '所有用户已成功导入。' });
+    })
+    .on('error', (err) => {
+      console.error('CSV解析错误:', err);
+      fs.unlinkSync(filePath); // 确保删除临时文件
+      return res.status(500).json({ message: 'CSV解析错误。' });
+    });
+});
+// -------------------- 部门管理 --------------------
+
+// 创建新部门
+router.post(
+  '/departments',
+  authenticate,
+  roleCheck(['admin']),
+  [
+    body('name').notEmpty().withMessage('部门名称不能为空。'),
+    body('parentId')
+      .optional({ nullable: true, checkFalsy: true }) // 允许 parentId 为 null 或假值
+      .isInt().withMessage('parentId 必须是整数。'),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    let { name, parentId } = req.body;
+
+    // 如果 parentId 是空字符串或 undefined，设置为 null
+    if (parentId === '' || parentId === undefined) {
+      parentId = null;
+    }
+
+    try {
+      // 检查部门名称是否已存在
+      const existingDept = await Department.findOne({ where: { name } });
+      if (existingDept) {
+        return res.status(400).json({ message: '部门名称已存在。' });
+      }
+
+      // 如果 parentId 不为 null，检查其是否存在
+      if (parentId !== null) {
+        const parentDept = await Department.findByPk(parentId);
+        if (!parentDept) {
+          return res.status(400).json({ message: '父部门不存在。' });
+        }
+      }
+
+      // 创建新部门
+      const newDept = await Department.create({ name, parentId });
+      res.status(201).json({ message: '部门创建成功。', department: newDept });
+    } catch (error) {
+      console.error('创建部门错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+// 获取所有部门
+router.get('/departments', authenticate, roleCheck(['admin']), async (req, res) => {
+  try {
+    const departments = await Department.findAll({
+      include: [
+        { model: Department, as: 'parentDepartment', attributes: ['id', 'name'] },
+        { model: Department, as: 'subDepartments', attributes: ['id', 'name'] },
+      ],
+    });
+    res.json(departments);
+  } catch (error) {
+    console.error('获取部门列表错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 获取单个部门（仅管理员可访问）
+router.get('/departments/:id', authenticate, roleCheck(['admin']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const department = await Department.findByPk(id, {
+      include: [
+        { model: Department, as: 'parentDepartment', attributes: ['id', 'name'] },
+        { model: Department, as: 'subDepartments', attributes: ['id', 'name'] },
+      ],
+    });
+
+    if (!department) {
+      return res.status(404).json({ message: '部门未找到。' });
+    }
+
+    res.json(department);
+  } catch (error) {
+    console.error('获取单个部门错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 更新部门信息
+router.put(
+  '/departments/:id',
+  authenticate,
+  roleCheck(['admin']),
+  [
+    param('id').isInt().withMessage('部门ID必须是整数。'),
+    body('name').optional().notEmpty().withMessage('部门名称不能为空。'),
+    body('parentId').optional().isInt().withMessage('parentId 必须是整数。'),
+  ],
+  async (req, res) => {
+    const { id } = req.params;
+    const { name, parentId } = req.body;
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const dept = await Department.findByPk(id);
+      if (!dept) {
+        return res.status(404).json({ message: '部门未找到。' });
+      }
+
+      // 更新部门名称（如果有变化）
+      if (name && name !== dept.name) {
+        const existingDept = await Department.findOne({ where: { name } });
+        if (existingDept) {
+          return res.status(400).json({ message: '部门名称已存在。' });
+        }
+        dept.name = name;
+      }
+
+      // 更新父部门（如果提供了 parentId）
+      if (parentId !== undefined) {
+        if (parentId === parseInt(id)) {
+          return res.status(400).json({ message: '部门不能设置为自己的父部门。' });
+        }
+        const parentDept = await Department.findByPk(parentId);
+        if (!parentDept) {
+          return res.status(400).json({ message: '父部门不存在。' });
+        }
+
+        // **移除层级限制的代码**
+        /*
+        if (parentDept.parentId) {
+          return res.status(400).json({ message: '部门层级不能超过两层。' });
+        }
+        */
+
+        dept.parentId = parentId;
+      }
+
+      // 保存更新后的部门
+      await dept.save();
+      console.log(`部门ID ${id} 已更新。`);
+      res.json({ message: '部门更新成功。', department: dept });
+    } catch (error) {
+      console.error('更新部门错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+// 删除部门
+router.delete(
+  '/departments/:id',
+  authenticate,
+  roleCheck(['admin']),
+  [
+    param('id').isInt().withMessage('部门ID必须是整数。'),
+  ],
+  async (req, res) => {
+    const { id } = req.params;
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      // 查找部门并包含子部门信息
+      const dept = await Department.findByPk(id, {
+        include: [{ model: Department, as: 'subDepartments' }],
+      });
+      if (!dept) {
+        return res.status(404).json({ message: '部门未找到。' });
+      }
+
+      // 检查是否有子部门存在
+      if (dept.subDepartments && dept.subDepartments.length > 0) {
+        return res.status(400).json({ message: '请先删除子部门。' });
+      }
+
+      // 删除部门
+      await dept.destroy();
+      console.log(`部门ID ${id} 已删除。`);
+      res.json({ message: '部门删除成功。' });
+    } catch (error) {
+      console.error('删除部门错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+
+
+// -------------------- 角色管理 --------------------
+
+// 创建角色
+router.post('/roles', authenticate, roleCheck(['admin']), [
+  body('name').notEmpty().withMessage('角色名称不能为空。'),
+  body('description').optional().notEmpty().withMessage('角色描述不能为空。'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { name, description } = req.body;
+
+  try {
+    const existingRole = await Role.findOne({ where: { name } });
+    if (existingRole) {
+      return res.status(400).json({ message: '角色名称已存在。' });
+    }
+
+    const newRole = await Role.create({ name, description });
+    res.status(201).json({ message: '角色创建成功。', role: newRole });
+  } catch (error) {
+    console.error('创建角色错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 获取所有角色
+router.get('/roles', authenticate, roleCheck(['admin']), async (req, res) => {
+  try {
+    const roles = await Role.findAll();
+    res.json(roles);
+  } catch (error) {
+    console.error('获取角色列表错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 更新角色
+router.put('/roles/:id', authenticate, roleCheck(['admin']), [
+  param('id').isInt().withMessage('角色ID必须是整数。'),
+  body('name').optional().notEmpty().withMessage('角色名称不能为空。'),
+  body('description').optional().notEmpty().withMessage('角色描述不能为空。'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { id } = req.params;
+  const { name, description } = req.body;
+
+  try {
+    const role = await Role.findByPk(id);
+    if (!role) {
+      return res.status(404).json({ message: '角色未找到。' });
+    }
+
+    // 检查角色名称是否已存在，排除当前角色
+    if (name) {
+      const existingRole = await Role.findOne({
+        where: {
+          name,
+          id: { [Op.ne]: id }, // 排除当前角色
+        },
+      });
+      if (existingRole) {
+        return res.status(400).json({ message: '角色名称已存在。' });
+      }
+      role.name = name;
+    }
+
+    if (description !== undefined) {
+      role.description = description;
+    }
+
+    await role.save();
+    res.json({ message: '角色更新成功。', role });
+  } catch (error) {
+    console.error('更新角色错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+// 删除角色
+router.delete('/roles/:id', authenticate, roleCheck(['admin']), [
+  param('id').isInt().withMessage('角色ID必须是整数。'),
+], async (req, res) => {
+  const { id } = req.params;
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  try {
+    const role = await Role.findByPk(id);
+    if (!role) {
+      return res.status(404).json({ message: '角色未找到。' });
+    }
+
+    await role.destroy();
+    res.json({ message: '角色删除成功。' });
+  } catch (error) {
+    console.error('删除角色错误:', error);
+    res.status(500).json({ message: '内部服务器错误。' });
+  }
+});
+
+module.exports = router;

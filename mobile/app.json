@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "MyApp",
+    "slug": "myapp",
+    "version": "1.0.0",
+    "extra": {
+      "API_URL": "http://dsm.yaojerry.cn:4321/api",
+      "eas": {
+        "projectId": "0a3c3ab4-ce9d-4e74-9f4b-58cb59f90cb9"
+      }
+    },
+    "sdkVersion": "51.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yaojerry.myapp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.yaojerry.myapp"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    }
+  }
+}

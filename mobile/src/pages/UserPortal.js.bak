@@ -1,0 +1,69 @@
+import React, { useState } from 'react';
+import { View, Text, Button, StyleSheet, TouchableOpacity } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import Profile from '../components/Profile';
+
+function UserPortal({ navigation }) {
+    const [tabIndex, setTabIndex] = useState(0);
+    const { user, logout } = useAuth();
+
+    const handleTabChange = (index) => setTabIndex(index);
+    const handleLogout = () => {
+        logout();
+        navigation.navigate('Login');
+    };
+
+    return (
+        <View style={styles.container}>
+            <View style={styles.header}>
+                <Text style={styles.title}>用户门户</Text>
+                <Button title="退出" onPress={handleLogout} color="#FFFFFF" />
+            </View>
+
+            <View style={styles.tabs}>
+                <TouchableOpacity onPress={() => handleTabChange(0)} style={styles.tabButton}>
+                    <Text style={styles.tabText}>工作台</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleTabChange(1)} style={styles.tabButton}>
+                    <Text style={styles.tabText}>聊天窗口</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleTabChange(2)} style={styles.tabButton}>
+                    <Text style={styles.tabText}>通讯录</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleTabChange(3)} style={styles.tabButton}>
+                    <Text style={styles.tabText}>我</Text>
+                </TouchableOpacity>
+            </View>
+
+            <TabPanel value={tabIndex} index={0}>
+                <Text>工作台 - 开发中</Text>
+            </TabPanel>
+            <TabPanel value={tabIndex} index={1}>
+                <Text>聊天窗口 - 开发中</Text>
+            </TabPanel>
+            <TabPanel value={tabIndex} index={2}>
+                <Text>通讯录 - 开发中</Text>
+            </TabPanel>
+            <TabPanel value={tabIndex} index={3}>
+                {user ? <Profile user={user} /> : <Text>请先登录</Text>}
+            </TabPanel>
+        </View>
+    );
+}
+
+function TabPanel({ children, value, index }) {
+    return <View style={value === index ? styles.panel : styles.hidden}>{children}</View>;
+}
+
+const styles = StyleSheet.create({
+    container: { flex: 1, padding: 16, backgroundColor: '#fff' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, backgroundColor: '#6200ea' },
+    title: { color: '#fff', fontSize: 20 },
+    tabs: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10 },
+    tabButton: { padding: 10 },
+    tabText: { fontSize: 16 },
+    panel: { padding: 20, backgroundColor: '#f2f2f2', marginTop: 10 },
+    hidden: { display: 'none' },
+});
+
+export default UserPortal;

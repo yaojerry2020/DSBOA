@@ -1,0 +1,78 @@
+// routes/approval.js
+
+const express = require('express');
+const router = express.Router();
+const auth = require('../middleware/auth');
+const roleCheck = require('../middleware/role');
+const { Approval, Application, User } = require('../models');
+const { body, validationResult } = require('express-validator');
+
+// 创建审批
+router.post('/',
+  auth,
+  roleCheck(['approver']),
+  [
+    body('applicationId').isInt().withMessage('applicationId 必须是整数。'),
+    body('status').isIn(['approved', 'rejected']).withMessage('状态无效。'),
+  ],
+  async (req, res) => {
+    // 验证请求体
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { applicationId, status } = req.body;
+
+    try {
+      const application = await Application.findByPk(applicationId);
+      if (!application) {
+        return res.status(404).json({ message: '用车申请未找到。' });
+      }
+
+      const newApproval = await Approval.create({
+        applicationId,
+        approverId: req.user.userId,
+        status,
+      });
+
+      res.status(201).json(newApproval);
+    } catch (error) {
+      console.error('创建审批错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+// 获取所有审批（仅管理员和审批人可访问）
+router.get('/',
+  auth,
+  roleCheck(['admin', 'approver']),
+  async (req, res) => {
+    try {
+      let approvals;
+      if (req.user.role === 'admin') {
+        approvals = await Approval.findAll({
+          include: [
+            { model: Application, as: 'application', include: ['applicant'] },
+            { model: User, as: 'approver', attributes: ['id', 'username', 'email'] },
+          ],
+        });
+      } else {
+        approvals = await Approval.findAll({
+          where: { approverId: req.user.userId },
+          include: [
+            { model: Application, as: 'application', include: ['applicant'] },
+            { model: User, as: 'approver', attributes: ['id', 'username', 'email'] },
+          ],
+        });
+      }
+      res.json(approvals);
+    } catch (error) {
+      console.error('获取审批列表错误:', error);
+      res.status(500).json({ message: '内部服务器错误。' });
+    }
+  }
+);
+
+module.exports = router;

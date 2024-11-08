@@ -1,0 +1,16 @@
+
+/volume1/web_packages/oa-system-frontend
+├── README.md
+├── backend_structure.txt
+├── frontend_structure.txt
+├── node_modules
+├── package-lock.json
+├── package.json
+├── public
+└── src
+
+directory: 3 file: 5
+
+
+
+[2K[1G
