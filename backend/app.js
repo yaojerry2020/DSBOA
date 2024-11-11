@@ -9,7 +9,6 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 
 const app = express();
-
 const db = require('./models');
 
 // 配置 CORS
@@ -32,6 +31,7 @@ const userRoutes = require('./routes/userRoutes');
 const departmentRoutes = require('./routes/department');
 const roleRoutes = require('./routes/role');
 const adminRoutes = require('./routes/admin');
+const noticeRoutes = require('./routes/noticeRoutes'); // 新增的公告管理路由
 
 // 引入认证中间件
 const authenticate = require('./middleware/authenticate');
@@ -43,6 +43,7 @@ app.use('/api/user', authenticate, userRoutes); // 受保护的普通用户路�
 app.use('/api/departments', authenticate, roleCheck(['admin']), departmentRoutes); // 管理员访问
 app.use('/api/roles', authenticate, roleCheck(['admin']), roleRoutes); // 管理员访问
 app.use('/api/admin', authenticate, roleCheck(['admin']), adminRoutes); // 管理员路由
+app.use('/api/notices', authenticate, noticeRoutes); // 公告管理路由
 
 // 404处理
 app.use((req, res) => {
@@ -66,6 +67,7 @@ const server = app.listen(PORT, async () => {
     if (roleCount === 0) {
       const adminRole = await Role.create({ name: 'admin', description: '管理员' });
       const userRole = await Role.create({ name: 'user', description: '普通用户' });
+      const noticeAdminRole = await Role.create({ name: 'notice_admin', description: '公告管理员' }); // 新增公告管理员角色
       console.log('角色已创建。');
     }
 
