@@ -46,6 +46,27 @@ exports.createNotice = async (req, res) => {
     }
 };
 
+// 切换公告的归档状态
+exports.updateNoticeArchiveStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { archived } = req.body;
+
+        const notice = await Notice.findByPk(id);
+        if (!notice) {
+            return res.status(404).json({ message: '公告未找到' });
+        }
+
+        notice.archived = archived;
+        await notice.save();
+
+        res.status(200).json({ message: '公告归档状态已更新', notice });
+    } catch (error) {
+        console.error('更新公告归档状态时出错:', error);
+        res.status(500).json({ message: '更新公告归档状态失败', error });
+    }
+};
+
 // 获取用户的所有未读公告
 exports.getUnreadNotices = async (req, res) => {
     try {

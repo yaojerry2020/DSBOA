@@ -1,4 +1,3 @@
-// src/components/AdminDashboard.js
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import {
@@ -15,7 +14,7 @@ import {
   Box,
   Button,
 } from '@mui/material';
-import { People, Business, Security } from '@mui/icons-material';
+import { People, Business, Security, Announcement } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
 const drawerWidth = 240;
@@ -27,8 +26,6 @@ const AdminDashboard = () => {
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
-
-      {/* 顶部导航栏 */}
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
@@ -40,7 +37,6 @@ const AdminDashboard = () => {
         </Toolbar>
       </AppBar>
 
-      {/* 侧边导航抽屉 */}
       <Drawer
         variant="permanent"
         sx={{
@@ -90,15 +86,24 @@ const AdminDashboard = () => {
                 <ListItemText primary="角色管理" />
               </ListItemButton>
             </ListItem>
+
+            <ListItem disablePadding>
+              <ListItemButton
+                component={Link}
+                to="/admin/announcements"
+                selected={location.pathname.startsWith('/admin/announcements')}
+              >
+                <ListItemIcon>
+                  <Announcement />
+                </ListItemIcon>
+                <ListItemText primary="公告管理" />
+              </ListItemButton>
+            </ListItem>
           </List>
         </Box>
       </Drawer>
 
-      {/* 主内容区域 */}
-      <Box
-        component="main"
-        sx={{ flexGrow: 1, bgcolor: 'background.default', p: 3, marginLeft: `${drawerWidth}px` }}
-      >
+      <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default', p: 3, marginLeft: `${drawerWidth}px` }}>
         <Toolbar />
         <Outlet />
       </Box>

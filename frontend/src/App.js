@@ -6,7 +6,6 @@ import PrivateRoute from './components/PrivateRoute';
 
 const Login = lazy(() => import('./pages/Login'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-//const UserHome = lazy(() => import('./components/UserHome'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
 const DepartmentManagement = lazy(() => import('./components/DepartmentManagement'));
 const EditDepartment = lazy(() => import('./components/EditDepartment'));
@@ -15,10 +14,10 @@ const RoleManagement = lazy(() => import('./components/RoleManagement'));
 const CreateUser = lazy(() => import('./components/CreateUser'));
 const EditUser = lazy(() => import('./components/EditUser'));
 const UserPortal = lazy(() => import('./pages/UserPortal'));
+const AdminAnnouncementManagement = lazy(() => import('./components/AdminAnnouncementManagement'));
 
 function AppContent() {
     const { user } = useAuth();
-	console.log("App.js loaded, user:", user); // 调试：确认App.js加载并输出user状态
 
     return (
         <Suspense fallback={<div>Loading...</div>}>
@@ -35,6 +34,7 @@ function AppContent() {
                         <Route path="departments/create" element={<CreateDepartment />} />
                         <Route path="departments/edit/:id" element={<EditDepartment />} />
                         <Route path="roles" element={<RoleManagement />} />
+                        <Route path="announcements" element={<AdminAnnouncementManagement />} />
                     </Route>
                 </Route>
                 
