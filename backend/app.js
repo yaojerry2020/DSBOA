@@ -32,6 +32,7 @@ const departmentRoutes = require('./routes/department');
 const roleRoutes = require('./routes/role');
 const adminRoutes = require('./routes/admin');
 const noticeRoutes = require('./routes/noticeRoutes'); // 新增的公告管理路由
+const notificationRoutes = require('./routes/notificationRoutes');//通用通知路由
 
 // 引入认证中间件
 const authenticate = require('./middleware/authenticate');
@@ -44,6 +45,7 @@ app.use('/api/departments', authenticate, roleCheck(['admin']), departmentRoutes
 app.use('/api/roles', authenticate, roleCheck(['admin']), roleRoutes); // 管理员访问
 app.use('/api/admin', authenticate, roleCheck(['admin']), adminRoutes); // 管理员路由
 app.use('/api/notices', authenticate, noticeRoutes); // 公告管理路由
+app.use('/api/notifications', notificationRoutes);//通用通知路由
 
 // 404处理
 app.use((req, res) => {

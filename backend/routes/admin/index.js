@@ -9,6 +9,7 @@ const roleCheck = require('../../middleware/role');
 const userRoutes = require('./userRoutes');
 const departmentRoutes = require('./departmentRoutes');
 const roleRoutes = require('./roleRoutes');
+const adminNoticeRoutes = require('./adminNoticeRoutes'); // 新增公告管理的admin路由
 
 // 应用通用的中间件
 router.use(authenticate);
@@ -18,6 +19,7 @@ router.use(roleCheck(['admin']));
 router.use('/users', userRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/roles', roleRoutes);
+router.use('/notices', adminNoticeRoutes); // 挂载公告管理的admin路由
 
 // 如果未来有其他管理模块，如项目管理，可以在此挂载
 // const projectRoutes = require('./projectRoutes');

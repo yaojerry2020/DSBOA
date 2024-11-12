@@ -26,14 +26,12 @@ module.exports = (sequelize, DataTypes) => {
     },
     avatar: {
       type: DataTypes.STRING,
-      allowNull: true, // 头像字段允许为空
+      allowNull: true,
       comment: "用户头像文件路径",
     },
-    // 其他字段...
   });
 
   User.associate = (models) => {
-    // 多对多关联 Role
     User.belongsToMany(models.Role, {
       through: 'UserRoles',
       as: 'roles',
@@ -41,12 +39,18 @@ module.exports = (sequelize, DataTypes) => {
       otherKey: 'roleId',
     });
 
-    // 多对多关联 Department
     User.belongsToMany(models.Department, {
       through: 'UserDepartments',
       as: 'departments',
       foreignKey: 'userId',
       otherKey: 'departmentId',
+    });
+
+    User.belongsToMany(models.Notice, {
+      through: 'UserNotices',
+      as: 'notices',
+      foreignKey: 'userId',
+      otherKey: 'noticeId',
     });
   };
 

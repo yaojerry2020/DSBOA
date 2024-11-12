@@ -25,11 +25,12 @@ module.exports = (sequelize, DataTypes) => {
 
   Notice.associate = (models) => {
     Notice.belongsToMany(models.User, {
-      through: 'NoticeReadStatus',
-      as: 'readers',
+      through: 'UserNotices',
+      as: 'users',
       foreignKey: 'noticeId',
       otherKey: 'userId',
     });
+    Notice.hasMany(models.UserNotice, { foreignKey: 'noticeId', as: 'userNotices' });
   };
 
   return Notice;

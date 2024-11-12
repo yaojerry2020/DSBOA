@@ -1,34 +1,59 @@
-// controllers/notificationController.js
+// backend/controllers/notificationController.js
 
-'use strict';
+const { Notification } = require('../models');
 
-const { User } = require('../models');
-
-/**
- * 发送通知给驾驶员
- */
-exports.sendNotificationToDriver = async (req, res) => {
-  const { driverId, message } = req.body;
-
-  if (!driverId || !message) {
-    return res.status(400).json({ message: '驾驶员ID和消息不能为空。' });
-  }
-
-  try {
-    const driver = await User.findByPk(driverId, {
-      include: [{ model: Role, as: 'role' }],
-    });
-
-    if (!driver || driver.role.name !== 'driver') {
-      return res.status(404).json({ message: '驾驶员未找到。' });
+// 创建通知
+exports.createNotification = async (req, res) => {
+    try {
+        const { userId, type, title, content } = req.body;
+        const notification = await Notification.create({ userId, type, title, content });
+        res.status(201).json(notification);
+    } catch (error) {
+        console.error('创建通知失败:', error);
+        res.status(500).json({ message: '创建通知失败', error });
     }
+};
 
-    // 这里添加发送通知的逻辑，例如通过Socket.io或邮件
-    // 示例: console.log(`发送给驾驶员 ${driver.username}: ${message}`);
+// 获取用户的所有通知
+exports.getUserNotifications = async (req, res) => {
+    try {
+        const notifications = await Notification.findAll({
+            where: { userId: req.user.id },
+            order: [['createdAt', 'DESC']],
+        });
+        res.json(notifications);
+    } catch (error) {
+        console.error('获取通知失败:', error);
+        res.status(500).json({ message: '获取通知失败', error });
+    }
+};
 
-    return res.status(200).json({ message: '通知已发送给驾驶员。' });
-  } catch (error) {
-    console.error('发送通知错误:', error);
-    return res.status(500).json({ message: '内部服务器错误。' });
-  }
+// 标记通知为已读
+exports.markNotificationAsRead = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const notification = await Notification.findOne({ where: { id, userId: req.user.id } });
+        if (!notification) return res.status(404).json({ message: '通知未找到' });
+
+        notification.isRead = true;
+        await notification.save();
+
+        res.json({ message: '通知已标记为已读' });
+    } catch (error) {
+        console.error('标记通知失败:', error);
+        res.status(500).json({ message: '标记通知失败', error });
+    }
+};
+
+// 获取未读通知数量
+exports.getUnreadNotificationCount = async (req, res) => {
+    try {
+        const count = await Notification.count({
+            where: { userId: req.user.id, isRead: false },
+        });
+        res.json({ unreadCount: count });
+    } catch (error) {
+        console.error('获取未读通知数量失败:', error);
+        res.status(500).json({ message: '获取未读通知数量失败', error });
+    }
 };
