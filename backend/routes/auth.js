@@ -12,6 +12,7 @@ router.post('/login', async (req, res) => {
   try {
     const user = await User.findOne({
       where: { username },
+	  attributes: ['id', 'username', 'displayName', 'password'],  // 确保包含 'displayName'
       include: [
         { model: Role, as: 'roles' },
         { model: Department, as: 'departments' }
@@ -35,6 +36,7 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
+		displayName: user.displayName, // 返回 displayName
         roles,
         departments: user.departments.map(dept => dept.name),
       },
