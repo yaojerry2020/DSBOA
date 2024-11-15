@@ -1,10 +1,35 @@
+// src/components/AdminAnnouncementManagement.js
 import React, { useEffect, useState } from 'react';
-import { Box, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, IconButton, Button } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Button
+} from '@mui/material';
 import { Archive, Unarchive, Delete } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
 import api from '../api';
 
 const AdminAnnouncementManagement = () => {
+  const { token, currentUser } = useAuth();
+  const navigate = useNavigate();
   const [announcements, setAnnouncements] = useState([]);
+
+  useEffect(() => {
+    if (!token || !currentUser || !currentUser.roles.includes('admin')) {
+      console.warn('用户认证无效，重定向到登录');
+      navigate('/login');
+      return;
+    }
+    fetchAnnouncements();
+  }, [token, currentUser, navigate]);
 
   const fetchAnnouncements = async () => {
     try {
@@ -15,51 +40,46 @@ const AdminAnnouncementManagement = () => {
     }
   };
 
-  useEffect(() => {
-    fetchAnnouncements();
-  }, []);
-
   const toggleArchive = async (id, archived) => {
     try {
-      await api.put(`/admin/notices/${id}`, { archived: !archived });
-      setAnnouncements((prev) =>
-        prev.map((announcement) =>
-          announcement.id === id ? { ...announcement, archived: !archived } : announcement
-        )
-      );
+      const response = await api.put(`/admin/notices/${id}/toggle-archive`, { archived: !archived });
+      console.log('公告归档状态更新:', response.data);
+      fetchAnnouncements(); // 更新列表
     } catch (error) {
-      console.error('切换公告归档状态失败:', error);
+      console.error('更新公告归档状态失败:', error);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('确定要删除此公告吗？')) return;
-
     try {
       await api.delete(`/admin/notices/${id}`);
-      setAnnouncements(announcements.filter((announcement) => announcement.id !== id));
+      console.log('公告已删除');
+      fetchAnnouncements(); // 更新列表
     } catch (error) {
       console.error('删除公告失败:', error);
     }
   };
 
-  // 导出公告为 CSV
-  const handleExport = async () => {
+  // 修复 handleExport 函数
+  const handleExport = () => {
     try {
-      const response = await api.get('/admin/notices/export', {
-        responseType: 'blob', // 确保接收文件数据
-      });
-      
-      // 创建下载链接
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const csvContent = announcements
+        .map((announcement) =>
+          [announcement.title, announcement.content, new Date(announcement.publishedAt).toLocaleString(), announcement.archived ? '已归档' : '活跃']
+            .join(',')
+        )
+        .join('\n');
+      const blob = new Blob([`标题,内容,发布时间,状态\n${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'announcements.csv'); // 指定下载文件的文件名
+      link.setAttribute('download', 'announcements.csv');
       document.body.appendChild(link);
       link.click();
-      link.parentNode.removeChild(link); // 下载后移除链接
+      document.body.removeChild(link);
+      console.log('公告已导出');
     } catch (error) {
-      console.error('公告导出失败:', error);
+      console.error('导出公告失败:', error);
     }
   };
 

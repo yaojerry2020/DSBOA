@@ -12,12 +12,13 @@ router.post('/login', async (req, res) => {
   try {
     const user = await User.findOne({
       where: { username },
-	  attributes: ['id', 'username', 'displayName', 'password'],  // 确保包含 'displayName'
+      attributes: ['id', 'username', 'displayName', 'password'],
       include: [
         { model: Role, as: 'roles' },
         { model: Department, as: 'departments' }
       ],
     });
+
     if (!user) return res.status(404).json({ message: '用户不存在' });
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -30,13 +31,11 @@ router.post('/login', async (req, res) => {
       { expiresIn: '1h' }
     );
 
-    console.log('生成的 token:', token);
-    
     res.json({
       user: {
         id: user.id,
         username: user.username,
-		displayName: user.displayName, // 返回 displayName
+        displayName: user.displayName,
         roles,
         departments: user.departments.map(dept => dept.name),
       },
@@ -47,5 +46,6 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ message: '服务器错误' });
   }
 });
+
 
 module.exports = router;
